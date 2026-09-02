@@ -179,7 +179,12 @@ function resolveAssetPath(source: string) {
   const normalized = path.posix.normalize(`/${source.replace(/^\.\//, "")}`);
   if (normalized === "/.." || normalized.startsWith("/../")) return null;
 
-  return `${assetPrefix}${normalized}`;
+  const encodedPath = normalized
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+
+  return `${assetPrefix}${encodedPath}`;
 }
 
 function stripTitle(markdown: string) {
@@ -201,11 +206,24 @@ function renderMath(formula: string) {
 
 function inlineMarkdown(value: string) {
   const placeholders: string[] = [];
+  const addImagePlaceholder = (source: string, alt: string) => {
+    const resolvedSource = resolveAssetPath(source.trim());
+    if (!resolvedSource) return "";
+
+    placeholders.push(
+      `<img src="${escapeHtml(resolvedSource)}" alt="${escapeHtml(alt)}" loading="lazy" />`,
+    );
+    return `@@PLACEHOLDER${placeholders.length - 1}@@`;
+  };
+
   const source = value
     .replace(/`([^`]+)`/g, (_, code) => {
       placeholders.push(`<code>${escapeHtml(code)}</code>`);
       return `@@PLACEHOLDER${placeholders.length - 1}@@`;
     })
+    .replace(/!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, src, alt) =>
+      addImagePlaceholder(src, (alt || src).trim()),
+    )
     .replace(/\$\$([^$\n]+?)\$\$/g, (_, formula) => {
       placeholders.push(renderMath(formula));
       return `@@PLACEHOLDER${placeholders.length - 1}@@`;
@@ -216,10 +234,8 @@ function inlineMarkdown(value: string) {
     });
 
   const escaped = escapeHtml(source)
-    .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt, src) => {
-      const resolvedSource = resolveAssetPath(src);
-      if (!resolvedSource) return escapeHtml(alt);
-      return `<img src="${escapeHtml(resolvedSource)}" alt="${escapeHtml(alt)}" loading="lazy" />`;
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, src) => {
+      return addImagePlaceholder(src.trim(), alt);
     })
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+|\/[^)]*)\)/g, '<a href="$2">$1</a>')
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")

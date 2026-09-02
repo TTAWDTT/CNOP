@@ -36,7 +36,7 @@ content/
 
 当前支持标题、段落、列表、引用、代码块、行内代码、链接、图片和基础 KaTeX 数学公式。正文图片会保持较大的展示尺寸，背景图不会被用于页面装饰。
 
-图片资源放在 `public/` 下，例如 `public/images/figure.png`，然后在 Markdown 中写 `![示意图](images/figure.png)`。构建时会自动为生产环境补上 `/CNOP` 前缀。
+图片资源放在 `public/` 下，例如 `public/images/figure.png`，然后在 Markdown 中写 `![示意图](images/figure.png)`；从 Obsidian 复制的 `![[figure.png]]` 语法也可以直接使用。构建时会自动为生产环境补上 `/CNOP` 前缀。
 
 ## 在线地址
 
