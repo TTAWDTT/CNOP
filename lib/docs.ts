@@ -1,0 +1,322 @@
+import fs from "node:fs";
+import path from "node:path";
+
+import katex from "katex";
+
+export type Heading = {
+  id: string;
+  level: 2 | 3;
+  text: string;
+};
+
+export type DocumentMeta = {
+  slug: string;
+  segments: string[];
+  title: string;
+  relativePath: string;
+};
+
+export type Document = DocumentMeta & {
+  html: string;
+  headings: Heading[];
+};
+
+export type DirectoryNode = {
+  kind: "directory";
+  name: string;
+  path: string;
+  children: Array<DirectoryNode | FileNode>;
+};
+
+export type FileNode = {
+  kind: "file";
+  name: string;
+  path: string;
+  title: string;
+  slug: string;
+};
+
+const contentDirectory = path.join(process.cwd(), "content");
+const assetPrefix = process.env.NODE_ENV === "production" ? "/CNOP" : "";
+
+type MarkdownFile = { filePath: string; relativePath: string };
+
+function readMarkdownFiles(
+  directory = contentDirectory,
+  prefix: string[] = [],
+): MarkdownFile[] {
+  if (!fs.existsSync(directory)) return [];
+
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(directory, entry.name);
+    const segments = [...prefix, entry.name];
+
+    if (entry.isDirectory()) return readMarkdownFiles(entryPath, segments);
+    if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".md")) return [];
+
+    return [{ filePath: entryPath, relativePath: segments.join("/") }];
+  });
+}
+
+function parseTitle(markdown: string, fallback: string) {
+  return markdown.match(/^#\s+(.+)$/m)?.[1]?.trim() || fallback;
+}
+
+function slugFor(relativePath: string) {
+  return relativePath.replace(/\.md$/i, "");
+}
+
+function toSegments(slug: string) {
+  return slug.split("/").filter(Boolean);
+}
+
+export function getDocuments(): DocumentMeta[] {
+  return readMarkdownFiles()
+    .map(({ filePath, relativePath }) => {
+      const slug = slugFor(relativePath);
+      const markdown = fs.readFileSync(filePath, "utf8");
+
+      return {
+        slug,
+        segments: toSegments(slug),
+        title: parseTitle(markdown, path.basename(slug)),
+        relativePath,
+      };
+    })
+    .sort((a, b) => a.relativePath.localeCompare(b.relativePath, "zh-CN"));
+}
+
+export function getDocument(slug: string) {
+  const safeSlug = slug.replace(/[\\]/g, "");
+  const filePath = path.join(contentDirectory, `${safeSlug}.md`);
+
+  if (
+    safeSlug.includes("..") ||
+    !filePath.startsWith(`${contentDirectory}${path.sep}`) ||
+    !fs.existsSync(filePath)
+  ) {
+    throw new Error(`Document not found: ${slug}`);
+  }
+
+  const markdown = fs.readFileSync(filePath, "utf8");
+  const meta = getDocuments().find((document) => document.slug === safeSlug);
+
+  if (!meta) throw new Error(`Document not found: ${slug}`);
+
+  const rendered = renderMarkdown(stripTitle(markdown));
+
+  return { ...meta, ...rendered } satisfies Document;
+}
+
+export function getDirectoryTree(documents = getDocuments()): DirectoryNode {
+  const root: DirectoryNode = {
+    kind: "directory",
+    name: "CNOP",
+    path: "",
+    children: [],
+  };
+
+  for (const document of documents) {
+    let current = root;
+    const parts = document.segments;
+    const fileName = parts.at(-1) || document.title;
+
+    for (const segment of parts.slice(0, -1)) {
+      let directory = current.children.find(
+        (child): child is DirectoryNode =>
+          child.kind === "directory" && child.name === segment,
+      );
+
+      if (!directory) {
+        directory = {
+          kind: "directory",
+          name: segment,
+          path: [...current.path.split("/").filter(Boolean), segment].join("/"),
+          children: [],
+        };
+        current.children.push(directory);
+      }
+
+      current = directory;
+    }
+
+    current.children.push({
+      kind: "file",
+      name: fileName,
+      path: document.relativePath,
+      title: document.title,
+      slug: document.slug,
+    });
+  }
+
+  const sortTree = (node: DirectoryNode) => {
+    node.children.sort((a, b) => {
+      if (a.kind !== b.kind) return a.kind === "directory" ? -1 : 1;
+      return a.name.localeCompare(b.name, "zh-CN");
+    });
+    node.children.forEach((child) => {
+      if (child.kind === "directory") sortTree(child);
+    });
+  };
+
+  sortTree(root);
+  return root;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function resolveAssetPath(source: string) {
+  if (/^https?:\/\//i.test(source)) return source;
+  if (/^\/CNOP(?:\/|$)/i.test(source)) return source;
+
+  const normalized = path.posix.normalize(`/${source.replace(/^\.\//, "")}`);
+  if (normalized === "/.." || normalized.startsWith("/../")) return null;
+
+  return `${assetPrefix}${normalized}`;
+}
+
+function stripTitle(markdown: string) {
+  return markdown
+    .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "")
+    .replace(/^#\s+.+\r?\n?/, "")
+    .trimStart();
+}
+
+function renderMath(formula: string) {
+  return katex.renderToString(formula.trim(), {
+    displayMode: false,
+    output: "html",
+    strict: false,
+    throwOnError: false,
+    trust: false,
+  });
+}
+
+function inlineMarkdown(value: string) {
+  const placeholders: string[] = [];
+  const source = value
+    .replace(/`([^`]+)`/g, (_, code) => {
+      placeholders.push(`<code>${escapeHtml(code)}</code>`);
+      return `@@PLACEHOLDER${placeholders.length - 1}@@`;
+    })
+    .replace(/\$\$([^$\n]+?)\$\$/g, (_, formula) => {
+      placeholders.push(renderMath(formula));
+      return `@@PLACEHOLDER${placeholders.length - 1}@@`;
+    })
+    .replace(/\$([^$\n]+?)\$/g, (_, formula) => {
+      placeholders.push(renderMath(formula));
+      return `@@PLACEHOLDER${placeholders.length - 1}@@`;
+    });
+
+  const escaped = escapeHtml(source)
+    .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt, src) => {
+      const resolvedSource = resolveAssetPath(src);
+      if (!resolvedSource) return escapeHtml(alt);
+      return `<img src="${escapeHtml(resolvedSource)}" alt="${escapeHtml(alt)}" loading="lazy" />`;
+    })
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+|\/[^)]*)\)/g, '<a href="$2">$1</a>')
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+
+  return escaped.replace(
+    /@@PLACEHOLDER(\d+)@@/g,
+    (_, index) => placeholders[Number(index)] || "",
+  );
+}
+
+function renderMarkdown(markdown: string) {
+  const html: string[] = [];
+  const headings: Heading[] = [];
+  const lines = markdown.replace(/^---\n[\s\S]*?\n---\n?/, "").split(/\r?\n/);
+  let paragraph: string[] = [];
+  let list: string[] = [];
+  let listTag: "ul" | "ol" = "ul";
+  let code: string[] = [];
+  let inCode = false;
+  let codeLanguage = "text";
+  let headingIndex = 0;
+
+  const flushParagraph = () => {
+    if (paragraph.length) html.push(`<p>${inlineMarkdown(paragraph.join(" "))}</p>`);
+    paragraph = [];
+  };
+  const flushList = () => {
+    if (list.length) html.push(`<${listTag}>${list.map((item) => `<li>${inlineMarkdown(item)}</li>`).join("")}</${listTag}>`);
+    list = [];
+  };
+  const flushCode = () => {
+    html.push(`<pre><code class="language-${escapeHtml(codeLanguage)}">${escapeHtml(code.join("\n"))}</code></pre>`);
+    code = [];
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+
+    if (inCode) {
+      if (line.startsWith("```")) {
+        flushCode();
+        inCode = false;
+      } else code.push(line);
+      continue;
+    }
+
+    if (line.startsWith("```")) {
+      flushParagraph();
+      flushList();
+      inCode = true;
+      codeLanguage = line.slice(3).trim() || "text";
+      continue;
+    }
+
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      flushParagraph();
+      flushList();
+      const level = heading[1].length;
+      const text = heading[2].replace(/[`*_]/g, "").trim();
+      const id = `section-${++headingIndex}`;
+      if (level === 2 || level === 3) headings.push({ id, level, text });
+      html.push(`<h${level} id="${id}">${inlineMarkdown(heading[2])}</h${level}>`);
+      continue;
+    }
+
+    if (!line.trim()) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    const unordered = line.match(/^[-*]\s+(.+)$/);
+    const ordered = line.match(/^\d+\.\s+(.+)$/);
+    if (unordered || ordered) {
+      flushParagraph();
+      const nextTag = ordered ? "ol" : "ul";
+      if (list.length && listTag !== nextTag) flushList();
+      listTag = nextTag;
+      list.push((unordered || ordered)?.[1] || "");
+      continue;
+    }
+
+    const quote = line.match(/^>\s?(.+)$/);
+    if (quote) {
+      flushParagraph();
+      flushList();
+      html.push(`<blockquote>${inlineMarkdown(quote[1])}</blockquote>`);
+      continue;
+    }
+
+    paragraph.push(line.trim());
+  }
+
+  if (inCode) flushCode();
+  flushParagraph();
+  flushList();
+  return { html: html.join("\n"), headings };
+}
