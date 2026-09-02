@@ -81,9 +81,23 @@ function parseFrontmatter(markdown: string) {
 
 function parseDate(markdown: string) {
   const frontmatter = parseFrontmatter(markdown);
-  const value = frontmatter.get("date") || frontmatter.get("time");
-  if (!value || Number.isNaN(Date.parse(value))) return undefined;
-  return value;
+  for (const value of [frontmatter.get("date"), frontmatter.get("time")]) {
+    if (!value) continue;
+
+    const datePart = value.match(/^(\d{4})-(\d{2})-(\d{2})(?=$|[T\s])/);
+    if (!datePart) continue;
+
+    const year = Number(datePart[1]);
+    const month = Number(datePart[2]);
+    const day = Number(datePart[3]);
+    const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    if (month < 1 || month > 12 || day < 1 || day > daysInMonth) continue;
+    if (Number.isNaN(Date.parse(value))) continue;
+
+    return value;
+  }
+
+  return undefined;
 }
 
 function compareDates(
