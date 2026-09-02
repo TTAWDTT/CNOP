@@ -46,7 +46,8 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 }
 
 .site-header a { text-decoration: none; }
-.site-header__brand { color: var(--foreground); font-size: 1.2rem; font-weight: 700; }
+.site-header__brand { display: inline-flex; align-items: center; gap: .65rem; color: var(--foreground); font-size: 1.2rem; font-weight: 700; }
+.site-header__avatar { width: 2rem; height: 2rem; border: 1px solid var(--separator); border-radius: 50%; object-fit: cover; }
 .site-header p { margin: 0; color: var(--muted); font-size: .82rem; }
 .site-header > a:last-child { justify-self: end; font-size: .9rem; }
 

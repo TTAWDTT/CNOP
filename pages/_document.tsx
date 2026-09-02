@@ -7,7 +7,7 @@ export default function Document() {
     <Html lang="zh-CN">
       <Head>
         <meta content="width=device-width, initial-scale=1" name="viewport" />
-        <link href={`${assetPrefix}/favicon.svg`} rel="icon" type="image/svg+xml" />
+        <link href={`${assetPrefix}/avatar.png`} rel="icon" type="image/png" />
       </Head>
       <body>
         <Main />
