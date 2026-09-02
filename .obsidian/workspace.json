@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "content/Manifold-CNOP/Manifold-CNOP.md",
+                "file": "README.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Manifold-CNOP"
+              "title": "README"
             }
           }
         ]
@@ -99,7 +99,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "content/Manifold-CNOP/Manifold-CNOP.md",
+                "file": "README.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -118,7 +118,7 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "content/Manifold-CNOP/Manifold-CNOP.md",
+                "file": "README.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
@@ -161,7 +161,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "content/Manifold-CNOP/Manifold-CNOP.md",
+                "file": "README.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
@@ -190,9 +190,26 @@
   },
   "active": "890e399433f92ae5",
   "lastOpenFiles": [
-    "content/README.md",
     "content/Manifold-CNOP/Manifold-CNOP.md",
-    "content/Manifold-CNOP",
+    "public/d4_stacked.png",
+    "public/eof_atlas_decompose.png",
+    "public/062f271da85f3a82eb982cb221a0c93b.png",
+    "public/Pasted image 20260902162849.png",
+    "public/Pasted image 20260902153619.png",
+    "public/Pasted image 20260902144813.png",
+    "public/Pasted image 20260902144132.png",
+    "out/index.html",
+    "out/_next/data/zt7tfH1V5itl6yKhV8_Hk/doc/Manifold-CNOP/Manifold-CNOP.json",
+    "out/_next/data/zt7tfH1V5itl6yKhV8_Hk/doc/README.json",
+    "out/_next/data/zt7tfH1V5itl6yKhV8_Hk/doc/Manifold-CNOP",
+    "out/_next/data/zt7tfH1V5itl6yKhV8_Hk/index.json",
+    "out/_next/data/zt7tfH1V5itl6yKhV8_Hk/doc",
+    "out/_next/data/zt7tfH1V5itl6yKhV8_Hk",
+    "out/_next/static/zt7tfH1V5itl6yKhV8_Hk/_ssgManifest.js",
+    "out/_next/static/zt7tfH1V5itl6yKhV8_Hk/_clientMiddlewareManifest.js",
+    "out/_next/static/zt7tfH1V5itl6yKhV8_Hk/_buildManifest.js",
+    "out/Pasted image 20260902103958.png",
+    "content/README.md",
     "public/avatar.png",
     "content/research/cnop.md",
     "public/Pasted image 20260902103958.png",
