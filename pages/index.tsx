@@ -24,7 +24,10 @@ export default function HomePage({ documents, tree }: { documents: DocumentMeta[
               <li key={document.slug}>
                 <Link href={`/doc/${document.slug}`}>
                   <span>{document.title}</span>
-                  <small>{document.relativePath}</small>
+                  <small>
+                    {document.relativePath}
+                    {document.date ? ` · ${document.date}` : ""}
+                  </small>
                 </Link>
               </li>
             ))}

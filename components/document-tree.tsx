@@ -11,6 +11,7 @@ function FileItem({ file, activeSlug }: { file: FileNode; activeSlug: string }) 
       >
         <span className="tree-icon">·</span>
         <span className="tree-label">{file.title}</span>
+        {file.date ? <time className="tree-date" dateTime={file.date}>{file.date}</time> : null}
       </Link>
     </li>
   );

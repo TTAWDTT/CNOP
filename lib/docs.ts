@@ -14,6 +14,7 @@ export type DocumentMeta = {
   segments: string[];
   title: string;
   relativePath: string;
+  date?: string;
 };
 
 export type Document = DocumentMeta & {
@@ -34,6 +35,7 @@ export type FileNode = {
   path: string;
   title: string;
   slug: string;
+  date?: string;
 };
 
 const contentDirectory = path.join(process.cwd(), "content");
@@ -62,6 +64,41 @@ function parseTitle(markdown: string, fallback: string) {
   return markdown.match(/^#\s+(.+)$/m)?.[1]?.trim() || fallback;
 }
 
+function parseFrontmatter(markdown: string) {
+  const match = markdown.replace(/^\uFEFF/, "").match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  if (!match) return new Map<string, string>();
+
+  return new Map(
+    match[1].split(/\r?\n/).flatMap((line) => {
+      const field = line.match(/^([A-Za-z][\w-]*):\s*(.*?)\s*$/);
+      if (!field) return [];
+
+      const value = field[2].replace(/^("|')(.*)\1$/, "$2").trim();
+      return value ? [[field[1].toLowerCase(), value] as const] : [];
+    }),
+  );
+}
+
+function parseDate(markdown: string) {
+  const frontmatter = parseFrontmatter(markdown);
+  const value = frontmatter.get("date") || frontmatter.get("time");
+  if (!value || Number.isNaN(Date.parse(value))) return undefined;
+  return value;
+}
+
+function compareDates(
+  a: { date?: string; relativePath?: string; path?: string },
+  b: { date?: string; relativePath?: string; path?: string },
+) {
+  const aTime = a.date ? Date.parse(a.date) : Number.NaN;
+  const bTime = b.date ? Date.parse(b.date) : Number.NaN;
+
+  if (!Number.isNaN(aTime) && !Number.isNaN(bTime) && aTime !== bTime) return bTime - aTime;
+  if (!Number.isNaN(aTime) && Number.isNaN(bTime)) return -1;
+  if (Number.isNaN(aTime) && !Number.isNaN(bTime)) return 1;
+  return (a.relativePath || a.path || "").localeCompare(b.relativePath || b.path || "", "zh-CN");
+}
+
 function slugFor(relativePath: string) {
   return relativePath.replace(/\.md$/i, "");
 }
@@ -75,15 +112,17 @@ export function getDocuments(): DocumentMeta[] {
     .map(({ filePath, relativePath }) => {
       const slug = slugFor(relativePath);
       const markdown = fs.readFileSync(filePath, "utf8");
+      const date = parseDate(markdown);
 
       return {
         slug,
         segments: toSegments(slug),
         title: parseTitle(markdown, path.basename(slug)),
         relativePath,
+        ...(date ? { date } : {}),
       };
     })
-    .sort((a, b) => a.relativePath.localeCompare(b.relativePath, "zh-CN"));
+    .sort(compareDates);
 }
 
 export function getDocument(slug: string) {
@@ -146,12 +185,14 @@ export function getDirectoryTree(documents = getDocuments()): DirectoryNode {
       path: document.relativePath,
       title: document.title,
       slug: document.slug,
+      ...(document.date ? { date: document.date } : {}),
     });
   }
 
   const sortTree = (node: DirectoryNode) => {
     node.children.sort((a, b) => {
       if (a.kind !== b.kind) return a.kind === "directory" ? -1 : 1;
+      if (a.kind === "file" && b.kind === "file") return compareDates(a, b);
       return a.name.localeCompare(b.name, "zh-CN");
     });
     node.children.forEach((child) => {
@@ -189,6 +230,7 @@ function resolveAssetPath(source: string) {
 
 function stripTitle(markdown: string) {
   return markdown
+    .replace(/^\uFEFF/, "")
     .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "")
     .replace(/^#\s+.+\r?\n?/, "")
     .trimStart();

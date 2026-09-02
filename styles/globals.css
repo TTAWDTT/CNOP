@@ -80,6 +80,7 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .document-tree details[open] > summary .tree-chevron { transform: rotate(90deg); }
 .tree-icon { color: var(--border); }
 .tree-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-date { flex: 0 0 auto; color: var(--muted); font-family: var(--mono); font-size: .68rem; }
 .tree-link--active { border-left: 2px solid var(--accent); color: var(--accent); }
 
 .document-main { min-width: 0; }
