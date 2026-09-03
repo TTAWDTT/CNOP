@@ -1,6 +1,7 @@
 import type { AppProps } from "next/app";
 import localFont from "next/font/local";
 
+import "katex/dist/katex.min.css";
 import "@/styles/globals.css";
 
 const lxgwWenKai = localFont({

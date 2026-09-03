@@ -253,7 +253,7 @@ function stripTitle(markdown: string) {
 function renderMath(formula: string, displayMode = false) {
   return katex.renderToString(formula.trim(), {
     displayMode,
-    output: "html",
+    output: "htmlAndMathml",
     strict: false,
     throwOnError: false,
     trust: false,
@@ -307,8 +307,25 @@ function parseTableRow(line: string) {
   const trimmed = line.trim();
   if (!trimmed.includes("|")) return null;
 
-  const content = trimmed.replace(/^\|/, "").replace(/\|$/, "");
-  return content.split("|").map((cell) => cell.trim());
+  let content = trimmed.replace(/^\|/, "");
+  if (content.endsWith("|") && !content.endsWith("\\|")) content = content.slice(0, -1);
+
+  const cells: string[] = [];
+  let cell = "";
+  for (let index = 0; index < content.length; index += 1) {
+    const character = content[index];
+    if (character === "\\" && content[index + 1] === "|") {
+      cell += "|";
+      index += 1;
+    } else if (character === "|") {
+      cells.push(cell.trim());
+      cell = "";
+    } else {
+      cell += character;
+    }
+  }
+  cells.push(cell.trim());
+  return cells;
 }
 
 function isTableSeparator(line: string) {
@@ -335,11 +352,76 @@ function renderTable(header: string[], alignments: Array<string | undefined>, ro
   const bodyHtml = rows
     .map(
       (row) =>
-        `<tr>${header.map((_, index) => renderTableCell("td", row[index] || "", alignments[index])).join("")}</tr>`,
+        `<tr>${header.map((_, index) => renderTableCell("td", row[index] ?? "", alignments[index])).join("")}</tr>`,
     )
     .join("");
 
   return `<table><thead><tr>${headerHtml}</tr></thead><tbody>${bodyHtml}</tbody></table>`;
+}
+
+type CodeFence = { length: number; info: string };
+
+function parseCodeFence(line: string): CodeFence | null {
+  const match = line.match(/^ {0,3}(`{3,})(.*)$/);
+  if (!match || match[2].includes("`")) return null;
+
+  return { length: match[1].length, info: match[2].trim() };
+}
+
+type DisplayMathBlock = {
+  closeIndex: number;
+  formula: string;
+  trailing: string;
+};
+
+function findDisplayMathBlock(
+  lines: string[],
+  startIndex: number,
+  openingContent: string,
+): DisplayMathBlock | null {
+  const inlineClosingIndex = openingContent.indexOf("$$");
+  if (inlineClosingIndex >= 0) {
+    return {
+      closeIndex: startIndex,
+      formula: openingContent.slice(0, inlineClosingIndex),
+      trailing: openingContent.slice(inlineClosingIndex + 2),
+    };
+  }
+
+  const formulaLines = openingContent ? [openingContent] : [];
+  let inCode = false;
+  let codeFenceLength = 3;
+
+  for (let lineIndex = startIndex + 1; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex].trimEnd();
+    const fence = parseCodeFence(line);
+
+    if (fence) {
+      if (inCode) {
+        if (!fence.info && fence.length >= codeFenceLength) inCode = false;
+      } else {
+        inCode = true;
+        codeFenceLength = fence.length;
+      }
+      continue;
+    }
+
+    if (!inCode) {
+      const closingIndex = line.indexOf("$$");
+      if (closingIndex >= 0) {
+        formulaLines.push(line.slice(0, closingIndex));
+        return {
+          closeIndex: lineIndex,
+          formula: formulaLines.join("\n"),
+          trailing: line.slice(closingIndex + 2),
+        };
+      }
+    }
+
+    formulaLines.push(lines[lineIndex]);
+  }
+
+  return null;
 }
 
 function renderMarkdown(markdown: string) {
@@ -352,9 +434,8 @@ function renderMarkdown(markdown: string) {
   let code: string[] = [];
   let inCode = false;
   let codeLanguage = "text";
+  let codeFenceLength = 3;
   let headingIndex = 0;
-  let inDisplayMath = false;
-  let displayMath: string[] = [];
 
   const flushParagraph = () => {
     if (paragraph.length) html.push(`<p>${inlineMarkdown(paragraph.join(" "))}</p>`);
@@ -372,31 +453,24 @@ function renderMarkdown(markdown: string) {
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const rawLine = lines[lineIndex];
     const line = rawLine.trimEnd();
+    const fence = parseCodeFence(line);
 
     if (inCode) {
-      if (line.startsWith("```")) {
+      if (fence && !fence.info && fence.length >= codeFenceLength) {
         flushCode();
         inCode = false;
-      } else code.push(line);
-      continue;
-    }
-
-    if (inDisplayMath) {
-      if (line.trim() === "$$") {
-        html.push(renderMath(displayMath.join("\n"), true));
-        displayMath = [];
-        inDisplayMath = false;
       } else {
-        displayMath.push(rawLine);
+        code.push(line);
       }
       continue;
     }
 
-    if (line.startsWith("```")) {
+    if (fence) {
       flushParagraph();
       flushList();
       inCode = true;
-      codeLanguage = line.slice(3).trim() || "text";
+      codeFenceLength = fence.length;
+      codeLanguage = fence.info || "text";
       continue;
     }
 
@@ -405,12 +479,15 @@ function renderMarkdown(markdown: string) {
       flushParagraph();
       flushList();
       const inlineFormula = displayMathStart[1];
-      const closingIndex = inlineFormula.indexOf("$$");
-      if (closingIndex >= 0) {
-        html.push(renderMath(inlineFormula.slice(0, closingIndex), true));
+      const displayMath = findDisplayMathBlock(lines, lineIndex, inlineFormula);
+      if (displayMath) {
+        html.push(renderMath(displayMath.formula, true));
+        lineIndex = displayMath.closeIndex;
+        if (displayMath.trailing.trim()) paragraph.push(displayMath.trailing.trim());
       } else {
-        displayMath = inlineFormula ? [inlineFormula] : [];
-        inDisplayMath = true;
+        // Keep malformed input visible and continue parsing later headings, tables,
+        // images, and paragraphs instead of swallowing the rest of the document.
+        paragraph.push(line.trim());
       }
       continue;
     }
@@ -479,7 +556,6 @@ function renderMarkdown(markdown: string) {
   }
 
   if (inCode) flushCode();
-  if (inDisplayMath) html.push(renderMath(displayMath.join("\n"), true));
   flushParagraph();
   flushList();
   return { html: html.join("\n"), headings };
