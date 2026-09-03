@@ -97,6 +97,9 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .document-content li + li { margin-top: .45rem; }
 .document-content blockquote { margin-left: 0; border-left: 3px solid var(--border); padding-left: 1rem; color: var(--muted); }
 .document-content a { text-underline-offset: .2em; }
+.document-content table { width: 100%; border-collapse: collapse; font-size: .95em; line-height: 1.55; overflow-wrap: anywhere; }
+.document-content th, .document-content td { border: 1px solid var(--border); padding: .55rem .7rem; text-align: left; vertical-align: top; }
+.document-content th { background: var(--surface); font-weight: 700; }
 .document-content code { border: 1px solid var(--separator); background: var(--surface); padding: .1rem .3rem; font-family: var(--mono); font-size: .88em; }
 .document-content pre { overflow-x: auto; border: 1px solid var(--separator); background: var(--surface); padding: 1rem; line-height: 1.6; }
 .document-content pre code { border: 0; background: transparent; padding: 0; }

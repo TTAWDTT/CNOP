@@ -250,9 +250,9 @@ function stripTitle(markdown: string) {
     .trimStart();
 }
 
-function renderMath(formula: string) {
+function renderMath(formula: string, displayMode = false) {
   return katex.renderToString(formula.trim(), {
-    displayMode: false,
+    displayMode,
     output: "html",
     strict: false,
     throwOnError: false,
@@ -281,7 +281,7 @@ function inlineMarkdown(value: string) {
       addImagePlaceholder(src, (alt || src).trim()),
     )
     .replace(/\$\$([^$\n]+?)\$\$/g, (_, formula) => {
-      placeholders.push(renderMath(formula));
+      placeholders.push(renderMath(formula, true));
       return `@@PLACEHOLDER${placeholders.length - 1}@@`;
     })
     .replace(/\$([^$\n]+?)\$/g, (_, formula) => {
@@ -303,6 +303,45 @@ function inlineMarkdown(value: string) {
   );
 }
 
+function parseTableRow(line: string) {
+  const trimmed = line.trim();
+  if (!trimmed.includes("|")) return null;
+
+  const content = trimmed.replace(/^\|/, "").replace(/\|$/, "");
+  return content.split("|").map((cell) => cell.trim());
+}
+
+function isTableSeparator(line: string) {
+  const cells = parseTableRow(line);
+  return Boolean(cells?.length && cells.every((cell) => /^:?-{3,}:?$/.test(cell)));
+}
+
+function getTableAlignment(cell: string) {
+  if (/^:-+:$/.test(cell)) return "center";
+  if (/^-+:$/.test(cell)) return "right";
+  if (/^:-+$/.test(cell)) return "left";
+  return undefined;
+}
+
+function renderTableCell(tag: "th" | "td", cell: string, alignment?: string) {
+  const attribute = alignment ? ` style="text-align:${alignment}"` : "";
+  return `<${tag}${attribute}>${inlineMarkdown(cell)}</${tag}>`;
+}
+
+function renderTable(header: string[], alignments: Array<string | undefined>, rows: string[][]) {
+  const headerHtml = header
+    .map((cell, index) => renderTableCell("th", cell, alignments[index]))
+    .join("");
+  const bodyHtml = rows
+    .map(
+      (row) =>
+        `<tr>${header.map((_, index) => renderTableCell("td", row[index] || "", alignments[index])).join("")}</tr>`,
+    )
+    .join("");
+
+  return `<table><thead><tr>${headerHtml}</tr></thead><tbody>${bodyHtml}</tbody></table>`;
+}
+
 function renderMarkdown(markdown: string) {
   const html: string[] = [];
   const headings: Heading[] = [];
@@ -314,6 +353,8 @@ function renderMarkdown(markdown: string) {
   let inCode = false;
   let codeLanguage = "text";
   let headingIndex = 0;
+  let inDisplayMath = false;
+  let displayMath: string[] = [];
 
   const flushParagraph = () => {
     if (paragraph.length) html.push(`<p>${inlineMarkdown(paragraph.join(" "))}</p>`);
@@ -328,7 +369,8 @@ function renderMarkdown(markdown: string) {
     code = [];
   };
 
-  for (const rawLine of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const rawLine = lines[lineIndex];
     const line = rawLine.trimEnd();
 
     if (inCode) {
@@ -339,11 +381,37 @@ function renderMarkdown(markdown: string) {
       continue;
     }
 
+    if (inDisplayMath) {
+      if (line.trim() === "$$") {
+        html.push(renderMath(displayMath.join("\n"), true));
+        displayMath = [];
+        inDisplayMath = false;
+      } else {
+        displayMath.push(rawLine);
+      }
+      continue;
+    }
+
     if (line.startsWith("```")) {
       flushParagraph();
       flushList();
       inCode = true;
       codeLanguage = line.slice(3).trim() || "text";
+      continue;
+    }
+
+    const displayMathStart = line.trim().match(/^\$\$(.*)$/);
+    if (displayMathStart) {
+      flushParagraph();
+      flushList();
+      const inlineFormula = displayMathStart[1];
+      const closingIndex = inlineFormula.indexOf("$$");
+      if (closingIndex >= 0) {
+        html.push(renderMath(inlineFormula.slice(0, closingIndex), true));
+      } else {
+        displayMath = inlineFormula ? [inlineFormula] : [];
+        inDisplayMath = true;
+      }
       continue;
     }
 
@@ -363,6 +431,29 @@ function renderMarkdown(markdown: string) {
       flushParagraph();
       flushList();
       continue;
+    }
+
+    const nextLine = lines[lineIndex + 1];
+    if (nextLine && isTableSeparator(nextLine)) {
+      const header = parseTableRow(line);
+      const separator = parseTableRow(nextLine);
+      if (header && separator) {
+        flushParagraph();
+        flushList();
+        const alignments = header.map((_, index) => getTableAlignment(separator[index] || ""));
+        const rows: string[][] = [];
+        lineIndex += 1;
+
+        while (lineIndex + 1 < lines.length) {
+          const row = parseTableRow(lines[lineIndex + 1]);
+          if (!row || !lines[lineIndex + 1].trim()) break;
+          rows.push(row);
+          lineIndex += 1;
+        }
+
+        html.push(renderTable(header, alignments, rows));
+        continue;
+      }
     }
 
     const unordered = line.match(/^[-*]\s+(.+)$/);
@@ -388,6 +479,7 @@ function renderMarkdown(markdown: string) {
   }
 
   if (inCode) flushCode();
+  if (inDisplayMath) html.push(renderMath(displayMath.join("\n"), true));
   flushParagraph();
   flushList();
   return { html: html.join("\n"), headings };
